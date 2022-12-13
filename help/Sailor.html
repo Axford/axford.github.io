@@ -1,0 +1,146 @@
+<link rel="stylesheet" href="../css/help.css">
+
+<div class="helpContent">
+
+<div><a href="index.html">&lt; Help Index</a></div>
+
+<h1>Sailor</h1>
+<p>Base class: <i>Drone</i></p>
+<p>Control a typical sailing boat</p>
+
+<h2>Usage Guide</h2>
+Sailor controller
+
+subs
+* target heading (from nav module)
+* wind direction (from wind sensor)
+* cross-track factor (from nav module)
+* ocean current vector - TODO
+
+pubs
+* heading (course to sail) - fed to rudder
+* sheet extension (from 0 - close haul to 1 - run) - fed to sheet actuator
+
+config (pubs)
+* polar - sailing performance for different headings relative to wind
+   - modelled as 16 segments in the clockwise 180 degree region (assumes mirrored performance)
+   - each segment is 180/16 degree = 11.25 degree arc, centre of segment should be considered the target heading to achieve associated performance
+   - performance stored as a single uint8_t value = 0..255
+
+<h2>Example Configuration</h2>
+<pre>[Sailor=12]
+  name="Sailor"
+  interval=1000
+  polar=0, 0, 0, 200,   255, 255, 255, 250,  240, 230, 220, 210,  200, 180, 160, 140
+  crosswind=0.5
+  $wind=@>50.10
+  $target=@>Nav.heading
+  $heading=@>50.8
+  $crosstrack=@>Nav.crosstrack
+  publish=target, heading, wind, crosstrack, course, sheet, polar</pre>
+
+<h2>Subs (inputs)</h2>
+<table>
+  <tr>
+    <th>Address</th>
+    <th>Addr Address</th>
+    <th>Name</th>
+    <th>Type</th>
+    <th>#</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td>8</td>
+    <td>9</td>
+    <td>target</td>
+    <td>f</td>
+    <td>1</td>
+    <td>Target bearing, typically Nav.heading</td>
+  </tr>
+  <tr>
+    <td>10</td>
+    <td>11</td>
+    <td>heading</td>
+    <td>f</td>
+    <td>1</td>
+    <td>Current heading, typically Compass.heading</td>
+  </tr>
+  <tr>
+    <td>12</td>
+    <td>13</td>
+    <td>wind</td>
+    <td>f</td>
+    <td>1</td>
+    <td>Current wind direction, typically Wind.wind</td>
+  </tr>
+  <tr>
+    <td>14</td>
+    <td>15</td>
+    <td>crosstrack</td>
+    <td>f</td>
+    <td>1</td>
+    <td>Current crosstrack from Nav.crosstrack</td>
+  </tr>
+</table>
+
+<h2>Pubs (outputs / config)</h2>
+<table>
+  <tr>
+    <th>Address</th>
+    <th>Name</th>
+    <th>Type</th>
+    <th>#</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td>16</td>
+    <td>course</td>
+    <td>f</td>
+    <td>1</td>
+    <td>Selected course/bearing - feed to Turnrate</td>
+  </tr>
+  <tr>
+    <td>17</td>
+    <td>sheet</td>
+    <td>f</td>
+    <td>1</td>
+    <td>Sheet servo control value in range -1 (close haul) to 1 (run)</td>
+  </tr>
+  <tr>
+    <td>18</td>
+    <td>polar</td>
+    <td>u8</td>
+    <td>16</td>
+    <td>Polar map for starboard wind (0-180 degrees), mirrored for port.  0=stall, 255=max relative speed</td>
+  </tr>
+  <tr>
+    <td>19</td>
+    <td>speed</td>
+    <td>u8</td>
+    <td>16</td>
+    <td>polar plot of estimated speeds by heading - 0-180</td>
+  </tr>
+  <tr>
+    <td>20</td>
+    <td>speed2</td>
+    <td>u8</td>
+    <td>16</td>
+    <td>polar plot of estimated speeds by heading - 180-360</td>
+  </tr>
+  <tr>
+    <td>21</td>
+    <td>flags</td>
+    <td>u8</td>
+    <td>3</td>
+    <td>[0] = onStarboardTack,  [1] = tackLocked,  [2] = lastCrossTrackPositive</td>
+  </tr>
+  <tr>
+    <td>22</td>
+    <td>wing</td>
+    <td>u8</td>
+    <td>1</td>
+    <td>Wingsail flap position.. 1 = starboard wind, -1 = port wind</td>
+  </tr>
+</table>
+
+</div>

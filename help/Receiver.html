@@ -1,0 +1,161 @@
+<link rel="stylesheet" href="../css/help.css">
+
+<div class="helpContent">
+
+<div><a href="index.html">&lt; Help Index</a></div>
+
+<h1>Receiver</h1>
+<p>Base class: <i>Drone</i></p>
+<p>Reads up to 4 PWM channels from an RC receiver</p>
+
+<h2>Usage Guide</h2>
+<p>PWM values from an RC receiver are decoded using interrupt routines, then converted
+and published as values (<b>value1, value2</b>, etc) in range -1..1 on a regular <b>interval</b>.  Output values can be subscribed to from other modules (e.g. Servo or TankSteer).  Up to 4 channels can be read.</p>
+
+<p>The valid range of PWM input values (i.e. pulse timings in ms) are defined by the <b>limits</b> parameter.</p>
+
+<p>Deadman protection is triggered after 5 seconds of no valid PWM signals and all output values are set to zero.</p>
+
+<p>The module can optionally be chained behind other modules (e.g. for automated navigation) with a virtual switch to flip outputs between channel subscriptions (passthrough mode) vs RC receiver inputs.  The <b>switch</b> parameter controls which mode the module is in - if switch is less than 0.5 then it is in passthrough (subscription values are output), otherwise in active mode (i.e. RC receiver values are output). </p>
+
+<h2>Example Configuration</h2>
+<pre>Receiver.new 14
+  name "Receiver"
+  interval 200
+  pins 34
+  limits 980 2020
+  mode 1 // PPM
+  $switch [@>14.13]
+  $input1 [@>9.14]
+  $input2 [@>8.16]
+  //.publish "pins"
+  .publish "value1"
+  .publish "value2"
+  .publish "value3"
+  .publish "input"
+  .publish "limits"
+  .publish "input1"
+  .publish "input2"
+  .publish "switch"
+.done</pre>
+
+<h2>Subs (inputs)</h2>
+<table>
+  <tr>
+    <th>Address</th>
+    <th>Addr Address</th>
+    <th>Name</th>
+    <th>Type</th>
+    <th>#</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td>21</td>
+    <td>25</td>
+    <td>input1</td>
+    <td>f</td>
+    <td>1</td>
+    <td>Subscription for channel 1 (used in passthrough mode)</td>
+  </tr>
+  <tr>
+    <td>22</td>
+    <td>26</td>
+    <td>input2</td>
+    <td>f</td>
+    <td>1</td>
+    <td>Subscription for channel 2 (used in passthrough mode)</td>
+  </tr>
+  <tr>
+    <td>23</td>
+    <td>27</td>
+    <td>input3</td>
+    <td>f</td>
+    <td>1</td>
+    <td>Subscription for channel 3 (used in passthrough mode)</td>
+  </tr>
+  <tr>
+    <td>24</td>
+    <td>28</td>
+    <td>input4</td>
+    <td>f</td>
+    <td>1</td>
+    <td>Subscription for channel 4 (used in passthrough mode)</td>
+  </tr>
+  <tr>
+    <td>29</td>
+    <td>30</td>
+    <td>switch</td>
+    <td>f</td>
+    <td>1</td>
+    <td>Mode control value - passthrough if less than 0.5, otherwise active (defaults to active)</td>
+  </tr>
+</table>
+
+<h2>Pubs (outputs / config)</h2>
+<table>
+  <tr>
+    <th>Address</th>
+    <th>Name</th>
+    <th>Type</th>
+    <th>#</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td>10</td>
+    <td>pins</td>
+    <td>u8</td>
+    <td>2</td>
+    <td>Receiver input pins, one per receiver channel (see <a href="pins.html">Pin Mappings</a>) or a single pin for PPM</td>
+  </tr>
+  <tr>
+    <td>11</td>
+    <td>value1</td>
+    <td>f</td>
+    <td>1</td>
+    <td>The output value on channel 1 (in range -1 .. 1)</td>
+  </tr>
+  <tr>
+    <td>12</td>
+    <td>value2</td>
+    <td>f</td>
+    <td>1</td>
+    <td>The output value on channel 2 (in range -1 .. 1)</td>
+  </tr>
+  <tr>
+    <td>13</td>
+    <td>value3</td>
+    <td>f</td>
+    <td>1</td>
+    <td>The output value on channel 3 (in range -1 .. 1)</td>
+  </tr>
+  <tr>
+    <td>14</td>
+    <td>value3</td>
+    <td>f</td>
+    <td>1</td>
+    <td>The output value on channel 4 (in range -1 .. 1)</td>
+  </tr>
+  <tr>
+    <td>15</td>
+    <td>limits</td>
+    <td>u32</td>
+    <td>2</td>
+    <td>The PWM timing min and max limits (default 1000 .. 2000)</td>
+  </tr>
+  <tr>
+    <td>20</td>
+    <td>input</td>
+    <td>u32</td>
+    <td>2</td>
+    <td>Raw PWM timing input values for each channel</td>
+  </tr>
+  <tr>
+    <td>31</td>
+    <td>mode</td>
+    <td>u8</td>
+    <td>1</td>
+    <td>0=PWM, 1=PPM on first defined pin (Default PPM)</td>
+  </tr>
+</table>
+
+</div>

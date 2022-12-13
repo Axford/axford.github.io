@@ -1,0 +1,154 @@
+
+.ConfigurationPanel {
+  width: 100%;
+  height: calc(100vh - 50px);
+}
+
+.ConfigurationPanel .fileBlock {
+  margin-top: 8px;
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  grid-gap: 8px;
+}
+
+.filePane {
+
+}
+
+.filePane .nav {
+  color:black;
+  background-color: #ccc;
+  padding: 4px 4px;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+}
+
+.filePane .files {
+  margin-top: 4px;
+  background-color: #333;
+  overflow-y:scroll;
+  height: 15vh;
+}
+
+.filePane .directory, .filePane .file {
+  padding-left:10px;
+  cursor: pointer;
+  user-select: none;
+  position:relative;
+}
+
+.filePane .directory .header, .filePane .file .header {
+  display:flex;
+  color:white;
+  padding: 2px 4px;
+}
+
+.filePane .directory .header.selected, .filePane .file .header.selected {
+  background-color: #007bff;
+}
+
+.filePane .directory .title, .filePane .file .title {
+  flex-grow:3;
+  flex-basis:70%;
+}
+
+.filePane .directory .size, .filePath .file .size {
+  flex-basis:auto;
+  width:40px;
+}
+
+.filePane .file canvas.download {
+  width:100%;
+  height:10px;
+}
+
+.filePane .file .title.downloaded {
+  color:#5f5;
+  font-weight:bold;
+}
+
+.filePane .directory .children {
+  margin-left:6px;
+}
+
+.filePane .directory .children .file:before, .filePane .directory .children .directory:before {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  width: 10px;
+  height: 1px;
+  margin: auto;
+  content: '';
+  background-color: #666;
+}
+
+.filePane .directory .children .file:after, .filePane .directory .children .directory:after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  height: 100%;
+  content: '';
+  background-color: #666;
+}
+
+  .filePane .directory .children .file:last-child:after, .filePane .directory .children .directory:last-child:after {
+  height: 10px;
+}
+
+
+}
+
+.ConfigurationPanel .editorBlock {
+  margin-top: 8px;
+}
+
+.editorBlock .editorNav {
+  color:black;
+  background-color: #ccc;
+  padding: 4px 4px;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+  margin-bottom:4px;
+}
+
+@-webkit-keyframes moving-gradient {
+    0% { background-position: left bottom; }
+    100% { background-position: right bottom; }
+}
+
+.editorBlock .editorNav.saving {
+  background: -webkit-linear-gradient(
+        left,
+        #5f5 30%,
+        #555 80%,
+        #5f5 100%
+    ) repeat;
+
+    -webkit-background-size: 50% 100%;
+    -webkit-animation-name: moving-gradient;
+    -webkit-animation-duration: 1s;
+    -webkit-animation-iteration-count: infinite;
+    -webkit-animation-timing-function: linear;
+}
+
+.editorBlock .editorNav.saved {
+  background-color: #5f5;
+}
+
+.editorBlock .editorNav.error {
+  background-color: #f55;
+}
+
+.editorBlock .editorNav .title {
+  font-size:1.2em;
+  font-weight:bold;
+}
+
+
+
+.editorBlock .editor {
+  min-height:400px;
+  height:100%;
+}
