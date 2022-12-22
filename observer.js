@@ -8,6 +8,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.14.0/firebas
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 import { getFirestore,  collection, doc, setDoc } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, listAll, getBytes } from "https://www.gstatic.com/firebasejs/9.14.0/firebase-storage.js";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -16,7 +17,8 @@ const firebaseConfig = {
   projectId: "dronelink-25dbc",
   storageBucket: "dronelink-25dbc.appspot.com",
   messagingSenderId: "722464451302",
-  appId: "1:722464451302:web:590b5f4213069c772d6927"
+  appId: "1:722464451302:web:590b5f4213069c772d6927",
+  storageBucket: 'gs://dronelink-25dbc.appspot.com'
 };
 
 // Initialize Firebase
@@ -26,6 +28,9 @@ console.log('Loaded firebase');
 
 // Initialize Cloud Firestore and get a reference to the service
 const db = getFirestore(app);
+
+// Initialize Cloud Storage and get a reference to the service
+const storage = getStorage(app);
 
 /*
 try {
@@ -47,12 +52,16 @@ try {
 import io from '../libs/socketio/socket.io.esm.min.mjs';
 var socket = io();
 
+
 import * as DLM from './modules/droneLinkMsg.mjs';
 import DroneLinkState from './modules/DroneLinkState.mjs';
 var state = new DroneLinkState(socket, db);
 
 import NodeUI from './modules/oui/NodeUI.mjs';
 import { controllers, initGamepads } from './modules/gamepads.js';
+
+import AisTracker from './modules/oui/AisTracker.mjs';
+var tracker = new AisTracker();
 
 // object of nodes, keyed on id, with associated UI objects
 // populated based on events from state object
@@ -66,6 +75,8 @@ mapboxgl.accessToken = 'pk.eyJ1IjoiYXhmb3JkIiwiYSI6ImNqMWMwYXI5MDAwNG8zMm5uanFye
 import DroneLinkLog from './modules/DroneLinkLog.mjs';
 var logger = new DroneLinkLog(state);
 var stateLog = new DroneLinkLog(state);
+
+var resumeLogPlayback = false;
 
 import NetManager from './modules/oui/NetManager.mjs';
 var networkGraph;
@@ -91,6 +102,10 @@ socket.on('localAddress', (id)=>{
   // set local address on state
   state.localAddress = id;
   if (networkGraph) networkGraph.localAddress = id;
+});
+
+socket.on('AIS', (msg)=>{
+  tracker.handleAIS(msg);
 });
 
 
@@ -179,7 +194,8 @@ async function saveState() {
 }
 
 
-async function saveLog() {
+function saveLog() {
+  /*
   var h = await getNewFileHandle();
 
   if (h) {
@@ -191,12 +207,65 @@ async function saveLog() {
     // Close the file and write the contents to disk.
     await writable.close();
   }
+  */
+
+  if (logger.size() == 0) return;
+
+  // generate filename
+  var filename = 'logs/' + (new Date(logger.startTime)).toISOString() + '.log';
+
+  const storageRef = ref(storage, filename);
+
+  // get blob from logger
+  var blob = logger.createBlob();
+
+  // 'file' comes from the Blob or File API
+  uploadBytes(storageRef, blob).then((snapshot) => {
+    console.log('Uploaded a blob or file!');
+    // now reset log contents ready to store some more
+    logger.reset();
+  }); 
 }
 
 
 
 
-async function loadLog() {
+async function loadLogs() {
+
+  // clear selection
+  $('#logSelect').empty();
+
+  // Create a reference under which you want to list
+  const listRef = ref(storage, 'logs');
+
+  // Find all the prefixes and items.
+  listAll(listRef)
+    .then((res) => {
+      res.prefixes.forEach((folderRef) => {
+        // All the prefixes under listRef.
+        // You may call listAll() recursively on them.
+      });
+      res.items.forEach((itemRef) => {
+        // All the items under listRef.
+        console.log(itemRef.name);
+        var dateStr = itemRef.name.slice(0,-4);
+        var fileDate = new Date(dateStr);
+
+        var niceName = fileDate.toString().slice(0,24);
+
+        // add to selection box
+        var option = $('<option value="'+itemRef.fullPath+'">'+niceName+'</option>');
+        $('#logSelect').append(option);
+      });
+
+      $('#logSelect').val('');
+    }).catch((error) => {
+      // Uh-oh, an error occurred!
+      console.error(error);
+    });
+
+
+  /*
   let fileHandle;
   [fileHandle] = await window.showOpenFilePicker();
 
@@ -207,6 +276,24 @@ async function loadLog() {
   logger.loadFromBuffer(buffer);
 
   alert('Log loaded');
+  */
+}
+
+
+async function loadLog(filePath) {
+  const docRef = ref(storage, filePath);
+
+  getBytes(docRef)
+    .then((buffer)=>{
+      // pass to logger to load and playback
+      logger.loadFromBuffer(buffer);
+
+      if (resumeLogPlayback) logger.play();
+    })
+    .catch((error) => {
+      // Uh-oh, an error occurred!
+      console.error(error);
+    });
 }
 
 
@@ -224,7 +311,7 @@ function calculateDistanceBetweenCoordinates( p1, p2) {
   return d;
 }
 
-
+/*
 function parseLog() {
   parsedLog = [];
 
@@ -253,14 +340,6 @@ function parseLog() {
       // store RSSI
       parseBuffer[2] = msg.valueArray()[0];
     }
-
-
-    /*
-    if (msg.node == 10 && msg.channel == 13 && msg.param == 13) {
-      // store depth
-      parseBuffer[2] = msg.valueArray()[0];
-    }
-    */
 
     // add buffer to parsedLog
     // store on GPS location change
@@ -295,7 +374,7 @@ function parseLog() {
 
   }
 }
-
+*/
 
 function addLogMarker(lon,lat, r,g,b) {
   // create or update marker
@@ -440,15 +519,20 @@ function init() {
     if (liveMode) {
       // switch to playback mode
       liveMode = false;
+      resumeLogPlayback = false;
       logger.stopRecording();
       $('#logPlaybackButton').html('Playback');
       state.liveMode = false;
       $('.logRecordControls').hide();
       $('.logPlaybackControls').show();
 
+      // load logs
+      loadLogs();
+
     } else {
       // switch to liveMode
       liveMode = true;
+      resumeLogPlayback = false;
       logger.pause();
       logger.rewind();
       $('#logPlaybackButton').html('Live');
@@ -474,16 +558,12 @@ function init() {
     saveLog();
   });
 
-  $('#logLoadButton').on('click', ()=>{
-    loadLog();
-  });
-
-  $('#logParseButton').on('click', ()=>{
-    parseLog();
-  });
-
   $('#logForwardButton').on('click', ()=>{
     logger.forward();
+  });
+
+  $('#logSelect').on('change', function() {
+    loadLog(this.value);
   });
 
   logger.on('status', ()=>{
@@ -492,12 +572,17 @@ function init() {
   });
 
   logger.on('info', (info)=>{
-    var t = (info.duration/1000);
-    var minutes = Math.floor(t/60);
-    var seconds = Math.round(t - (minutes*60));
-    $('#logStatus').html(info.packets + ' / '+ ('0000'+minutes).slice(-2) + ':' + ('0000'+seconds).slice(-2) +' ');
+    // if reached 5min, then trigger save
+    if (info.duration >= 5*60000 && logger.recording) {
+      saveLog();
+    } else {
+      var t = (info.duration/1000);
+      var minutes = Math.floor(t/60);
+      var seconds = Math.round(t - (minutes*60));
+      $('#logStatus').html(info.packets + ' / '+ ('0000'+minutes).slice(-2) + ':' + ('0000'+seconds).slice(-2) +' ');
+    }
   });
-
+0
   logger.on('playbackInfo', (info)=>{
     var t = (info.duration/1000);
     var minutes = Math.floor(t/60);
@@ -507,6 +592,20 @@ function init() {
     $('#logPlaybackStatus').css('background-position', '-'+px+'px 0px');
 
     $('#logPlaybackStatus').html(info.packets + ' / '+ ('0000'+minutes).slice(-2) + ':' + ('0000'+seconds).slice(-2) +' ');
+  });
+
+  logger.on('EOF', ()=>{
+    // load next log file...
+    resumeLogPlayback = true;
+    // current index
+    var index = $('#logSelect').prop('selectedIndex');
+    // number of options
+    var numOptions = $('#logSelect option').length;
+    index++;
+    if (index < numOptions) {
+      $('#logSelect option')[index].selected = true;
+      $('#logSelect').change();
+    }
   });
 
   // load last position from local storage
@@ -532,6 +631,8 @@ function init() {
   });
 
   map.on('style.load', () => {
+
+    tracker.map = map;
 
     map.setPaintProperty(
       'satellite',
@@ -612,6 +713,9 @@ function init() {
         // update network graph
         networkGraph.focus(n.id);
 
+        // update AIS tracker
+        tracker.focus(n);
+
         // ensure mgmt panel is open
         openPanel();
       }
@@ -626,7 +730,6 @@ function init() {
 
     state.goLive();
   });
-
 
   // init gamepads
   initGamepads(()=>{

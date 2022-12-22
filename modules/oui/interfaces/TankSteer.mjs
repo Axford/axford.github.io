@@ -1,6 +1,8 @@
 import loadStylesheet from '../../loadStylesheet.js';
 import * as DLM from '../../droneLinkMsg.mjs';
 
+import { degreesToRadians, radiansToDegrees } from '../../navMath.mjs';
+
 
 export default class TankSteer {
 	constructor(channel, state) {
@@ -10,11 +12,17 @@ export default class TankSteer {
 	}
 
 	onParamValue(data) {
+    // heading
+		if (data.param == 22 && data.msgType == DLM.DRONE_LINK_MSG_TYPE_FLOAT) {
+			// pass onto node for mapping
+		  this.channel.node.updateMapParam('heading', 2, data.values, this.channel.channel, 22);
+		}
+
     this.update();
   }
 
   update() {
-		if (!this.built) return;
+		if (!this.built || this.ui.height()<=0) return;
 
     var node = this.channel.node.id;
     var channel = this.channel.channel;
@@ -22,8 +30,9 @@ export default class TankSteer {
     // fetch params
 		var left =  this.state.getParamValues(node, channel, 8, [0])[0];
     var right =  this.state.getParamValues(node, channel, 9, [0])[0];
-		var turnRate =  this.state.getParamValues(node, channel, 10, [0])[0];
-    var speed = this.state.getParamValues(node, channel, 12, [0])[0];
+		var distance =  this.state.getParamValues(node, channel, 24, [0])[0];
+    var targetHeading = this.state.getParamValues(node, channel, 20, [0])[0];
+    var currentHeading = this.state.getParamValues(node, channel, 22, [0])[0];
 
     // prep canvas
 		var c = this.canvas[0];
@@ -33,7 +42,7 @@ export default class TankSteer {
 		var w = this.ui.width();
 		ctx.canvas.width = w;
 		var cx = w/2;
-    var h = this.ui.height();
+    var h = this.ui.height()-15;
 
 		ctx.fillStyle = '#343a40';
 		ctx.fillRect(0,0,w,h);
@@ -79,22 +88,19 @@ export default class TankSteer {
     by2 = (y1+bh/2);
     ctx.fillRect(x1,by1,bw,by2-by1);
 
+    // calc scaling for radius
+    var rMax = Math.min(w/2, h/2) * 0.9;
+    var r = rMax * (Math.min(distance,50) / 50);
 
     // center vector plot
     // -------------------------------------------------
     // draw current bounds
-    var bx1 = w/2 - cw/2;
-    var bx2 = w/2 + cw/2;
-    var by1 = h/2 - ch/2;
-    var by2 = h/2 + ch/2;
-    // outer rect
-    ctx.strokeStyle = "#aaa";
-    ctx.lineWidth = "1";
-    ctx.beginPath();
-    ctx.rect(bx1,by1,bx2-bx1,by2-by1);
-    ctx.stroke();
-
-    // draw centre of bounds
+    var bx1 = w/2 - rMax;
+    var bx2 = w/2 + rMax;
+    var by1 = h/2 - rMax;
+    var by2 = h/2 + rMax;
+    
+    // cross hair
     ctx.strokeStyle = '#aaa';
     ctx.lineWidth = 1;
     // x
@@ -107,11 +113,23 @@ export default class TankSteer {
     ctx.moveTo((bx1+bx2)/2, by1);
     ctx.lineTo((bx1+bx2)/2, by2);
     ctx.stroke();
+    
+
+    // outer ring
+    ctx.strokeStyle = "#aaa";
+    ctx.lineWidth = "1";
+    ctx.beginPath();
+    ctx.arc(w/2, h/2, rMax, 0, 2*Math.PI);
+    ctx.stroke();
 
     // draw current vector
+    var ang = currentHeading;
+    var vx = w/2 + r * Math.cos(degreesToRadians(ang-90));
+    var vy = h/2 + r * Math.sin(degreesToRadians(ang-90));
 
-    var vx = w/2 + turnRate * cw/2;
-    var vy = h/2 - speed * ch/2;
+    //var vx = w/2 + turnRate * cw/2;
+    //var vy = h/2 - speed * ch/2;
+
     ctx.strokeStyle = '#5f5';
     ctx.lineWidth = 4;
     ctx.beginPath();
@@ -119,6 +137,25 @@ export default class TankSteer {
     ctx.lineTo(vx, vy);
     ctx.stroke();
 
+    // draw target vector
+    ang = targetHeading;
+    vx = w/2 + r * Math.cos(degreesToRadians(ang-90));
+    vy = h/2 + r * Math.sin(degreesToRadians(ang-90));
+
+    //var vx = w/2 + turnRate * cw/2;
+    //var vy = h/2 - speed * ch/2;
+
+    ctx.strokeStyle = '#5ff';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo((bx1+bx2)/2, (by1+by2)/2);
+    ctx.lineTo(vx, vy);
+    ctx.stroke();
+
+    ctx.fillStyle = '#FFF';
+    ctx.font = '12px serif';
+		ctx.textAlign = 'left';
+    ctx.fillText(distance.toFixed(0) + 'm', vx+5, vy);
 
   }
 
@@ -138,8 +175,15 @@ export default class TankSteer {
 			var qm = new DLM.DroneLinkMsg();
 			qm.node = this.channel.node.id;
 			qm.channel = this.channel.channel;
-			qm.param = 16;
+			qm.param = 10;
 			qm.setUint8([ newMode ]);
+			this.state.send(qm);
+
+      var qm = new DLM.DroneLinkMsg();
+			qm.node = this.channel.node.id;
+			qm.channel = this.channel.channel;
+			qm.param = 10;
+      qm.msgType = DLM.DRONE_LINK_MSG_TYPE_QUERY;
 			this.state.send(qm);
     });
 
@@ -148,34 +192,57 @@ export default class TankSteer {
     this.canvas = $('<canvas height=200 />');
     this.canvas.on('click', (e)=>{
 
+      var node = this.channel.node.id;
+      var channel = this.channel.channel;
+
 			var offsetX = $( e.target ).offset().left;
 			var offsetY = $( e.target ).offset().top;
 			var w = $(e.target).innerWidth();
 			var h = $(e.target).innerHeight();
 
+      var rMax = Math.min(w/2, h/2) * 0.9;
+
 			var x = (e.pageX - offsetX) - w/2;
 			var y = (e.pageY - offsetY) - h/2;
 
-      // convert to speed / turnRate
-      var speed = (-y) / (h/2);
-      var turnRate = x / (w/2);
+      var currentHeading = this.state.getParamValues(node, channel, 22, [0])[0];
 
-      console.log('tankSteer update: ',speed, turnRate);
+      // convert to angle / distance
+      var ang = radiansToDegrees(Math.atan2(y,x)) + 90;
+      var targetHeading = ang;
+
+      var distance = 50 * Math.sqrt(x*x, y*y) / rMax;
+
+      // 20 = target, 24 = distance
 
 			var qm = new DLM.DroneLinkMsg();
 			qm.node = this.channel.node.id;
 			qm.channel = this.channel.channel;
-			qm.param = 12;
-			qm.setFloat([ speed ]);
+			qm.param = 20;
+			qm.setFloat([ targetHeading ]);
+			this.state.send(qm);
+
+      var qm = new DLM.DroneLinkMsg();
+			qm.node = this.channel.node.id;
+			qm.channel = this.channel.channel;
+			qm.param = 20;
+      qm.msgType = DLM.DRONE_LINK_MSG_TYPE_QUERY;
 			this.state.send(qm);
 
 			var qm = new DLM.DroneLinkMsg();
 			qm.node = this.channel.node.id;
 			qm.channel = this.channel.channel;
-			qm.param = 10;
-			qm.setFloat([ turnRate ]);
+			qm.param = 24;
+			qm.setFloat([ distance ]);
 			this.state.send(qm);
 
+      var qm = new DLM.DroneLinkMsg();
+			qm.node = this.channel.node.id;
+			qm.channel = this.channel.channel;
+			qm.param = 24;
+      qm.msgType = DLM.DRONE_LINK_MSG_TYPE_QUERY;
+			this.state.send(qm);
+      
 		});
 
 		this.ui.append(this.canvas);

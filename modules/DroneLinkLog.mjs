@@ -45,6 +45,7 @@ export default class DroneLinkLog {
 
         if (me.playbackIndex >= me.log.length) {
           me.playback = false;
+          this.trigger('EOF', null);
           this.trigger('status', null);
         }
       }
@@ -57,6 +58,12 @@ export default class DroneLinkLog {
       }
     })
   }
+
+
+  size() {
+    return this.log.length;
+  }
+
 
   add(msg, quiet=false) {
     var me = this;
@@ -149,6 +156,7 @@ export default class DroneLinkLog {
   rewind() {
     this.playbackIndex = 0;
     this.playbackTime = 0;
+    this.playbackStart = Date.now() - this.playbackTime;
 
     this.trigger('playbackInfo',{
       packets:0,
@@ -165,7 +173,9 @@ export default class DroneLinkLog {
     //me.state[msg.node].channels[msg.channel].params.hasOwnProperty(msg.param)
 
     for (const [nkey, node] of Object.entries(this.state.state)) {
-      this.logStateForNode(nkey, node);
+      // don't store state info for nodes that aren't live!
+      if (node.interface != 'firebase')
+        this.logStateForNode(nkey, node);
     }
   }
 
@@ -221,6 +231,34 @@ export default class DroneLinkLog {
     }
   }
 
+  createBlob() {
+    // calc how many bytes are required for the entire log
+    var bufferSize = 0;
+    for (var i=0; i<this.log.length; i++) {
+      bufferSize += this.log[i].getLogEncodingSize();
+    }
+
+    // create an arraybuffer of suitable size
+    var buffer = new Uint8Array(bufferSize);
+    
+    // write the log data into the array
+    var p = 0; // pointer to write position
+    for (var i=0; i<this.log.length; i++) {
+      var part = this.log[i].encodeForLog();
+
+      for (var j=0; j<part.length; j++) {
+        buffer[p] = part[j];
+        p++;
+      }
+    }
+
+    // convert to blob
+    var blob = new Blob([buffer], {
+      type: 'application/octet-stream'
+    })
+    return blob;
+  }
+
   loadFromBuffer(buffer) {
     this.reset();
 
@@ -245,6 +283,12 @@ export default class DroneLinkLog {
       // jump to next packet
       i += size;
     }
+
+    this.playbackIndex = 0;
+    this.playbackTime = 0;
+    this.playbackStart = Date.now() - this.playbackTime;
+
+    this.trigger('status', null);
   }
 
 }

@@ -88,6 +88,12 @@ export default class SimSailBoat extends SimNode {
       values: 0.5
     };
 
+    this.pubs['gps.speedOverGround'] = {
+      param: 12,
+      msgType: DLM.DRONE_LINK_MSG_TYPE_FLOAT,
+      values: [0]
+    };
+
     // subs
     this.sheetSub = new DLM.DroneLinkMsg();
     this.sheetSub.setAddress(config.sheet);
@@ -121,6 +127,19 @@ export default class SimSailBoat extends SimNode {
     this.polarIndex = 0;
     this.sailForce = 0;
     this.rudderForce = 0;
+  }
+
+  getDiagnosticString() {
+    var s = this.node + ': ' + this.name + '\n';
+    s += ' v: ' + this.physics.v.x.toFixed(1) + ', ' + this.physics.v.y.toFixed(1) + '\n';
+    s += ' angV: ' + this.physics.angV.toFixed(1) + '\n';
+    s += ' heading: ' + this.heading.toFixed(1) + '\n';
+    s += ' angToWind: ' + this.angToWind.toFixed(1) + '\n';
+    s += ' polarIndex: ' + this.polarIndex + '\n';
+    s += ' sailForce: ' + this.sailForce.toFixed(2) + '\n';
+    s += ' rudderForce: ' + this.rudderForce.toFixed(2) + '\n';
+
+    return s;
   }
 
   handleLinkMessage(msg) {
@@ -191,6 +210,9 @@ export default class SimSailBoat extends SimNode {
 
       // invert heading
       this.pubs['compass.heading'].values[0] = this.heading;
+
+      // update speed over ground
+      this.pubs['gps.speedOverGround'].values[0] = this.physics.v.y * 1.94384;  // convert to knots
 
       //console.log('new loc: ', this.pubs['gps.location'].values);
 

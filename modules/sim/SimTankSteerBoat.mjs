@@ -36,7 +36,7 @@ export default class SimTankSteerBoat extends SimNode {
     this.pubs['wind.speed'] = {
       param: 11,
       msgType: DLM.DRONE_LINK_MSG_TYPE_FLOAT,
-      values: 0.5
+      values: 0
     };
 
     // subs
@@ -66,8 +66,18 @@ export default class SimTankSteerBoat extends SimNode {
     this.calcCylindricalInertia(0.6, 0.06);
 
     // sample wind
-    this.getWind();
+    //this.getWind();
   }
+
+
+  getDiagnosticString() {
+    var s = this.node + ': ' + this.name + '\n';
+    s += ' v: ' + this.physics.v.x.toFixed(1) + ', ' + this.physics.v.y.toFixed(1) + '\n';
+    s += ' angV: ' + this.physics.angV.toFixed(1) + '\n';
+
+    return s;
+  }
+
 
   handleLinkMessage(msg) {
     super.handleLinkMessage(msg);
@@ -141,7 +151,7 @@ export default class SimTankSteerBoat extends SimNode {
       //this.pubs['wind.direction'].values[0] += (Math.random()-0.5) * dt;
 
       // convert motor speeds to impulse vectors
-      var fv = 0.5;
+      var fv = 1;
 
       // apply deadband
       if (this.leftSub.values[0] < 0.3) this.leftSub.values[0] = 0;
@@ -178,7 +188,7 @@ export default class SimTankSteerBoat extends SimNode {
       // invert heading
       this.pubs['compass.heading'].values[0] = -this.physics.aDeg;
 
-      console.log('new loc: ', this.pubs['gps.location'].values);
+      //console.log('new loc: ', this.pubs['gps.location'].values);
 
       this.publishParams();
 

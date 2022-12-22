@@ -14,6 +14,8 @@ import GraphPanel from './panels/Graph.mjs';
 import NodeSettingsPanel from './panels/NodeSettings.mjs';
 import VisualisationPanel from './panels/Visualisation.mjs';
 
+import {calculateDestinationFromDistanceAndBearing} from '../navMath.mjs';
+
 loadStylesheet('./css/modules/oui/NodeUI.css');
 
 
@@ -31,8 +33,13 @@ export default class NodeUI {
     this.ipAddress = '';
     this.selectedNodeFilename = '';
     this.scriptMarkers = [];
+    this.scriptMarkerLabels = [];
     this.focused = false;
     this.heading= 0;
+    this.speedOverGround = 0;
+    this.lastLocationTime = 0; 
+    this.lastLocation = [0,0]; // to estimate speed over ground 
+    this.priorityCounts= [0,0,0,0];
 
     // used to track mappable params like location or heading
     this.mapParams = {};
@@ -116,6 +123,27 @@ export default class NodeUI {
     this.uiTitle = $('<div class="nodeTitle">'+ this.id +'</div>');
     this.pui.append(this.uiTitle);
 
+    // add network priority pie widget
+    this.uiPriorityPie = $('<canvas width=20 height=20 class="priorityPie"></canvas>');
+    this.pui.append(this.uiPriorityPie);
+
+    // add rebuild button to right panel
+    this.uiRebuildBut = $('<button class="btn btn-sm btn-dark mb-2 mr-3 rebuildModules">Rebuild</button>');
+		this.uiRebuildBut.on('click', ()=>{
+			// remove UI for modules, params, etc
+      me.panels.Management.clear();
+      
+      // clear state info... and also remove from firestore
+      me.state.rebuildNode(me.id);
+
+      // remove any bindings to map params
+      me.mapParams = {};
+
+      // remove histogram data
+
+		});
+    this.pui.append(this.uiRebuildBut);
+
     // container for tabs
     this.puiNav = $('<div class="panelNav"></div>');
     this.pui.append(this.puiNav);
@@ -194,6 +222,9 @@ export default class NodeUI {
         }
       }
 
+      // update priority counts
+      this.priorityCounts[data.priority]++;
+
       // update lastHeard
       var now = (new Date()).getTime();
       this.lastHeard = now;
@@ -229,7 +260,57 @@ export default class NodeUI {
         this.uiWidgets.show();
       }
 
+      // also update network Priority Pie 
+      this.updatePriorityPie();
+ 
+
     }, 1000)
+  }
+
+
+  updatePriorityPie() {
+    // calc segment sizes
+    var totalPackets = 0;
+    for (var i=0; i<4; i++) {
+      totalPackets += this.priorityCounts[i];
+    }
+
+    if (totalPackets == 0) return;
+
+    const segmentColors = [
+      '#f55',
+      '#fa5',
+      '#5f5',
+      '#fff'
+    ];
+
+    var c = this.uiPriorityPie[0];
+    var ctx = c.getContext("2d");
+
+    var w = ctx.canvas.width;
+    var h = ctx.canvas.height;
+    var cx = w/2, cy = h/2, r=10;
+
+    // calc and draw segments
+    var ang = 0;
+    for (var i=0; i<4; i++) {
+      var segmentRatio = this.priorityCounts[i] / totalPackets;
+
+      var segmentAng = segmentRatio * 2 * Math.PI;
+
+      ctx.fillStyle = segmentColors[i];
+      ctx.strokeStyle = '#000';
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,r,ang, ang+segmentAng);
+      ctx.lineTo(cx,cy);
+      ctx.fill();
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+
+      ang += segmentAng;
+    }
+    //this.uiPriorityPie.html(this.priorityCounts[0]);
   }
 
 
@@ -446,6 +527,25 @@ export default class NodeUI {
           .setLngLat(this.location)
           .addTo(this.map);
 
+
+    // heading indicator
+    this.headingIndicatorName = 'headingIndicator' + this.id;
+    var targetCoords = calculateDestinationFromDistanceAndBearing(this.location, 1, 0);
+
+    this.headingIndicator = { "type": "LineString", "coordinates": [ this.location, targetCoords ] };
+    this.map.addSource(this.headingIndicatorName, { type: 'geojson', data: this.headingIndicator });
+    this.map.addLayer({
+      'id': this.headingIndicatorName,
+      'type': 'line',
+      'source': this.headingIndicatorName,
+      'paint': {
+        'line-color': 'green',
+        'line-opacity': 1,
+        'line-width': 3
+      }
+    });
+
+
     // -- snailTrail --
     var trailName = 'snailTrail' + this.id;
     this.snailTrail = { "type": "LineString", "coordinates": [ this.location ] };
@@ -491,6 +591,8 @@ export default class NodeUI {
   }
 
   updateLocation(newLoc) {
+    var loopTime = (new Date()).getTime();
+
     //console.log(newLoc);
     this.location = newLoc;
     // update snailTrail
@@ -507,6 +609,22 @@ export default class NodeUI {
         if (src) src.setData(this.snailTrail);
       }
     }
+
+    // update speed estimate
+    if (this.lastLocation[0] != 0 && this.lastLocationTime > 0) {
+      var d1 = this.distanceBetweenCoordinates(this.location, this.lastLocation);
+      var dt = (loopTime - this.lastLocationTime) / 1000;
+      if (dt > 1) {
+        var speed = d1 / dt;
+        this.speedOverGround = (this.speedOverGround * 9 + speed) / 10;
+  
+        // update label
+        this.markerLabel.getElement().innerHTML = this.name + '<br/>' + (this.speedOverGround * 1.94384).toFixed(1) + 'kn';
+      }
+    }
+
+    this.lastLocation = newLoc;
+    this.lastLocationTime = loopTime;
 
     // update target
     if (this.targetTrace) {
@@ -535,8 +653,18 @@ export default class NodeUI {
   updateHeading(heading) {
     //console.log(heading);
     if (this.gotLocation) {
+      this.heading = heading;
       this.mapElArrow.className = 'fas fa-arrow-up';
       this.marker.setRotation(heading);
+
+      // heading
+      this.headingIndicator.coordinates[0] = this.location;
+      var len = this.speedOverGround * 60 / 1.94384;  // convert back to meters in 1 min
+      var targetCoords = calculateDestinationFromDistanceAndBearing(this.location, len, this.heading);
+      this.headingIndicator.coordinates[1] = targetCoords;
+
+      var src = this.map.getSource(this.headingIndicatorName);
+      if (src) src.setData(this.headingIndicator);
     }
   }
 

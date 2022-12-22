@@ -187,7 +187,8 @@ class DroneFSEntry {
 
 
   handleFileResponse(fr) {
-
+    console.log('fs.file.response: path: ', fr.path);
+    
     // separate path from name
     var fp = 0;
     for (var i=fr.path.length-1; i>=0; i--) {
@@ -221,6 +222,8 @@ class DroneFSEntry {
       if (this.isDir) {
 
         var createChild = false;
+
+        console.log('fs.file.response: ',path, this.path);
 
         // is this about one of our immediate children?
         if (path == this.path) {
@@ -910,6 +913,22 @@ export default class Configuration extends Panel {
     this.title = 'Configuration';
     this.icon = 'fas fa-folder-open';
 
+    // -- marker trail --
+    this.node.markerTrailName = 'markerTrail' + this.node.id;
+    this.node.markerTrail = { "type": "LineString", "coordinates": [  ] };
+    this.node.map.addSource(this.node.markerTrailName, { type: 'geojson', lineMetrics: true, data: this.node.markerTrail });
+    this.node.map.addLayer({
+      'id': this.node.markerTrailName,
+      'type': 'line',
+      'source': this.node.markerTrailName,
+      'paint': {
+        'line-color': '#88f',
+        'line-opacity': 0.8,
+        'line-width': 2,
+        'line-dasharray': [2,2]
+      }
+    });
+
     this.build();
 
     this.root = new DroneFSEntry(this, this.node.state.socket, this.node.id, null, '/', true, this.cuiFilesOnNodeFiles);
@@ -1273,6 +1292,8 @@ export default class Configuration extends Panel {
     // e.g. extract navigation markers
     var sess = this.aceEditor.session;
 
+    this.node.markerTrail.coordinates = [];
+
     var numLines = sess.getLength();
     var numMarkers = 0;
     for (var i=1; i<=numLines; i++) {
@@ -1296,9 +1317,10 @@ export default class Configuration extends Panel {
 
           if (isNaN(lon) || isNaN(lat)) continue;
 
-          var marker;
+          var marker, markerLabel;
           if (numMarkers < this.node.scriptMarkers.length) {
             marker = this.node.scriptMarkers[numMarkers];
+            markerLabel = this.node.scriptMarkerLabels[numMarkers];
           } else {
             marker = new mapboxgl.Marker(el)
                 .setLngLat([lon,lat])
@@ -1317,15 +1339,33 @@ export default class Configuration extends Panel {
               this.aceEditor.selection.moveCursorTo(e.target.lineNumber, newCmd.length, false);
               this.aceEditor.selection.clearSelection();
 
-            })
+            });
 
             this.node.scriptMarkers.push(marker);
+
+            // label
+            // -- marker label --
+            var labelEl = document.createElement('div');
+            labelEl.className = 'markerLabel';
+            labelEl.innerHTML = i;
+            markerLabel = new mapboxgl.Marker({
+              element:labelEl,
+              anchor:'left'
+            })
+                  .setLngLat([lon,lat])
+                  .addTo(this.node.map);
+            this.node.scriptMarkerLabels.push(markerLabel);
           }
 
           if (lon && lat) {
             marker.setLngLat([lon,lat]);
             marker.lineNumber = i;
             marker.targetRadius = radius;
+
+            markerLabel.setLngLat([lon,lat]);
+            markerLabel.getElement().innerHTML = i;
+
+            this.node.markerTrail.coordinates.push([lon,lat]);
           } else {
             console.error('invalid coords:', lon, lat);
           }
@@ -1342,6 +1382,12 @@ export default class Configuration extends Panel {
       this.node.scriptMarkers.pop();
     }
 
+    // delete redundant labels
+    while (numMarkers < this.node.scriptMarkerLabels.length) {
+      this.node.scriptMarkerLabels[this.node.scriptMarkerLabels.length-1].remove();
+      this.node.scriptMarkerLabels.pop();
+    }
+
     if (this.node.scriptMarkers.length == 0) {
       // clear script target outline
       // set outline
@@ -1356,7 +1402,8 @@ export default class Configuration extends Panel {
       if (src) src.setData(outlineData);
     }
 
-    //console.log('done',numMarkers, this.node.scriptMarkers.length, this.node.scriptMarkers);
+    var src = this.node.map.getSource(this.node.markerTrailName);
+    if (src) src.setData(this.node.markerTrail);
   }
 
 
