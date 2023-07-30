@@ -5,12 +5,14 @@ import * as DLM from '../droneLinkMsg.mjs';
 import Parameter from './Parameter.mjs';
 
 // interfaces
+import CMPS12 from './interfaces/CMPS12.mjs';
 import Depth from './interfaces/Depth.mjs';
 import HMC5883L from './interfaces/HMC5883L.mjs';
 import INA219 from './interfaces/INA219.mjs';
 import INA3221 from './interfaces/INA3221.mjs';
 import LSM9DS1 from './interfaces/LSM9DS1.mjs';
 import Management from './interfaces/Management.mjs';
+import MPU6050 from './interfaces/MPU6050.mjs';
 import Nav from './interfaces/Nav.mjs';
 import Neopixel from './interfaces/Neopixel.mjs';
 import NMEA from './interfaces/NMEA.mjs';
@@ -26,6 +28,7 @@ import TurnRate from './interfaces/TurnRate.mjs';
 import UDPTelemetry from './interfaces/UDPTelemetry.mjs';
 import Waypoint from './interfaces/Waypoint.mjs';
 import Wind from './interfaces/Wind.mjs';
+import WindFromWing from './interfaces/WindFromWing.mjs';
 
 
 loadStylesheet('./css/modules/oui/Channel.css');
@@ -42,6 +45,8 @@ export default class Channel {
     this.lastHeard = (new Date()).getTime();
     this.interface = null;
     this.params = {};
+    this.uiState = 'parameters';
+    this.visible = false;
 
     this.ui = $('<div class="Channel"/>');
     this.ui.data('channel', data.channel);
@@ -91,22 +96,13 @@ export default class Channel {
     // tab buttons
     this.interfaceButton = $('<button class="btn btn-tiny btn-light float-right mr-1" style="display:none">Interface</button>');
     this.interfaceButton.on('click',()=>{
-      this.interfaceButton.hide();
-      this.parametersButton.show();
-      this.interfaceTab.show();
-      this.parametersTab.hide();
-      if (this.interface) {
-        this.interface.update();
-      }
+      me.changeUIState('interface');
     });
     this.ui.append(this.interfaceButton);
 
     this.parametersButton = $('<button class="btn btn-tiny btn-light float-right mr-1" style="display:none">Parameters</button>');
     this.parametersButton.on('click',()=>{
-      this.interfaceButton.show();
-      this.parametersButton.hide();
-      this.interfaceTab.hide();
-      this.parametersTab.show();
+      me.changeUIState('parameters');
     });
     this.ui.append(this.parametersButton);
 
@@ -147,6 +143,11 @@ export default class Channel {
       this.uiLastHeard.html(age.toFixed(0) + 's');
       if (age > 60) { this.uiLastHeard.addClass('bg-warning'); } else {
         this.uiLastHeard.removeClass('bg-warning');
+      }
+
+      // trigger updateIfNeeded
+      if (this.interface) {
+        this.interface.updateIfNeeded();
       }
     }, 1000);
 
@@ -191,7 +192,9 @@ export default class Channel {
       //console.log(data);
 
       // instance an interface if available
-      if (data.type == 'Depth') {
+      if (data.type == 'CMPS12') {
+        this.interface = new CMPS12(this, state);
+      } else if (data.type == 'Depth') {
         this.interface = new Depth(this, state);
       } else if (data.type == 'HMC5883L' || data.type == 'QMC5883L') {
         this.interface = new HMC5883L(this, state);
@@ -203,6 +206,8 @@ export default class Channel {
         this.interface = new LSM9DS1(this, state);
       } else if (data.type == 'Management') {
         this.interface = new Management(this, state);
+      } else if (data.type == 'MPU6050') {
+        this.interface = new MPU6050(this, state);
       } else if (data.type == 'Nav') {
         this.interface = new Nav(this, state);
       } else if (data.type == 'Neopixel') {
@@ -233,18 +238,16 @@ export default class Channel {
         this.interface = new Waypoint(this, state);
       } else if (data.type == 'Wind') {
         this.interface = new Wind(this, state);
+      } else if (data.type == 'WindFromWing') {
+        this.interface = new WindFromWing(this, state);
       }
 
 
       // and render / show the new interface
       if (this.interface) {
-        this.interface.build();
+        this.uiState = 'interface';
         this.expand();
 
-        this.interfaceButton.hide();
-        this.parametersButton.show();
-        this.interfaceTab.show();
-        this.parametersTab.hide();
       }
     });
 
@@ -317,8 +320,29 @@ export default class Channel {
         }
       }
     });
+  }
 
 
+  changeUIState(s) {
+    if (s == 'interface') {
+      this.interfaceButton.hide();
+      this.parametersButton.show();
+      this.interfaceTab.show();
+      this.parametersTab.hide();
+      if (this.interface && (typeof this.interface.show === 'function')) {
+        if (this.visible)
+          this.interface.show();
+      }
+    } else if (s == 'parameters') {
+      this.interfaceButton.show();
+      this.parametersButton.hide();
+      this.interfaceTab.hide();
+      this.parametersTab.show();
+      if (this.interface && (typeof this.interface.hide === 'function')) {
+        this.interface.hide();
+      }
+    }
+    this.uiState = s;
   }
 
   collapse() {
@@ -326,13 +350,26 @@ export default class Channel {
     this.uiTitleContainer.removeClass('open');
     this.uiTitleContainer.addClass('closed');
     this.uiChannelTabs.hide();
+    this.hide();
   }
 
   expand() {
     this.isOpen = true;
     this.uiTitleContainer.addClass('open');
     this.uiTitleContainer.removeClass('closed');
-    this.uiChannelTabs.show();
+    this.uiChannelTabs.show(); 
+    this.changeUIState(this.uiState);
   }
 
+  show() {
+    this.visible = true;
+    this.changeUIState(this.uiState);
+  }
+
+  hide() {
+    this.visible = false;
+    if (this.interface) {
+      this.interface.hide();
+    }
+  }
 }

@@ -170,6 +170,11 @@ export class DroneLinkMsg {
 	}
 
   setUint32(values) {
+    if (values === undefined) {
+      console.error('Undefined values for setUint32: ', values);
+      return;
+    }
+      
 		this.msgType = DRONE_LINK_MSG_TYPE_UINT32_T;
 		this.msgLength = values.length;
     this.writable = false;
@@ -331,7 +336,8 @@ export class DroneLinkMsg {
       valueView = Array.from(temp);
 
     } else if (this.msgType == DRONE_LINK_MSG_TYPE_UINT32_T) {
-      valueView = new Uint32Array(this.rawPayload, 0, numValues);
+      var temp = new Uint32Array(this.rawPayload, 0, numValues);
+      valueView = Array.from(temp);
       //console.log("u32", valueView);
 
     } else if (this.msgType == DRONE_LINK_MSG_TYPE_FLOAT) {

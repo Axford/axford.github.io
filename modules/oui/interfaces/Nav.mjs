@@ -1,46 +1,23 @@
+import ModuleInterface from './ModuleInterface.mjs';
 import loadStylesheet from '../../loadStylesheet.js';
 import * as DLM from '../../droneLinkMsg.mjs';
+//import {} from '../../navMath.mjs';
 
 
 //loadStylesheet('./css/modules/interfaces/Sailor.css');
 
-function radiansToDegrees(a) {
-  return a * 180 / Math.PI;
-}
 
-function degreesToRadians(a) {
-  return a * Math.PI / 180;
-}
-
-
-function drawLabelledHand(ctx, ang, label, r1, r2, color) {
-  var angR = (ang - 90) * Math.PI / 180;
-
-  var cx = ctx.canvas.width / 2;
-
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.moveTo(cx + r1*Math.cos(angR), 100 + r1*Math.sin(angR));
-  ctx.lineTo(cx + r2*Math.cos(angR), 100 + r2*Math.sin(angR) );
-  ctx.stroke();
-
-  ctx.fillStyle = color;
-  ctx.font = '15px Arial';
-  ctx.textAlign = 'left';
-  //ctx.fillText(ang.toFixed(0) + '°', 10, 25);
-  ctx.fillText(label, cx + 4 + r2*Math.cos(angR), 100 + r2*Math.sin(angR));
-}
-
-export default class Nav {
+export default class Nav extends ModuleInterface {
 	constructor(channel, state) {
-    this.channel = channel;
-    this.state = state;
-    this.built = false;
+    super(channel, state);
+
+    this.locationReceived = false;
+    this.lastReceived = false;
+    this.targetReceived = false;
 	}
 
   update() {
-    if (!this.built) return;
+    if (!super.update()) return;
 
     var node = this.channel.node.id;
     var channel = this.channel.channel;
@@ -92,9 +69,9 @@ export default class Nav {
     ctx.stroke();
 
 		// hands
-    drawLabelledHand(ctx, heading, '', 30,90, '#5F5');
-    drawLabelledHand(ctx, adjHeading, '', 30, 90, '#FF5');
-    drawLabelledHand(ctx, wind, '', 60, 110, '#55F');
+    this.drawLabelledHand(heading, '', 30,90, '#5F5');
+    this.drawLabelledHand(adjHeading, '', 30, 90, '#FF5');
+    this.drawLabelledHand(wind, '', 60, 110, '#55F');
 
     // legend - top right
 		ctx.textAlign = 'right';
@@ -118,11 +95,44 @@ export default class Nav {
   }
 
 
+  queryMissing() {
+    var node = this.channel.node.id;
+    var channel = this.channel.channel;
+    
+    // query missing params in order
+    if (this.locationReceived) {
+      if (this.targetReceived) {
+        if (!this.lastReceived) {
+          // do we already have a last value in state?
+        var last = this.state.getParamValues(node, channel, 15, [0,0,0]);
+        if (last[0] != 0) {
+          this.channel.node.updateMapParam('last', 2, last, this.channel.channel, 15);
+          this.lastReceived = true;
+        } else 
+          this.queryParam(15);
+        }
+      } else {
+        // do we already have a target value in state?
+        var target = this.state.getParamValues(node, channel, 12, [0,0,0]);
+        if (target[0] != 0) {
+          this.channel.node.updateMapParam('target', 2, target, this.channel.channel, 12);
+          this.targetReceived = true;
+        } else 
+          this.queryParam(12);
+      }
+    }    
+  }
+
   onParamValue(data) {
+    if (!this.built) return;
+
     // location
 		if (data.param == 10 && data.msgType == DLM.DRONE_LINK_MSG_TYPE_FLOAT) {
 			// pass onto node for mapping
 			this.channel.node.updateMapParam('location', 2, data.values, this.channel.channel, 10);
+      this.locationReceived = true;
+
+      this.queryMissing();
 		}
 
     // heading
@@ -134,13 +144,17 @@ export default class Nav {
     // target
 		if (data.param == 12 && data.msgType == DLM.DRONE_LINK_MSG_TYPE_FLOAT) {
 			// pass onto node for mapping
+      console.log('target received');
 			this.channel.node.updateMapParam('target', 2, data.values, this.channel.channel, 12);
+      this.targetReceived = true;
 		}
 
     // last
 		if (data.param == 15 && data.msgType == DLM.DRONE_LINK_MSG_TYPE_FLOAT) {
 			// pass onto node for mapping
+      console.log('last received');
 			this.channel.node.updateMapParam('last', 2, data.values, this.channel.channel, 15);
+      this.lastReceived = true;
 		}
 
     // mode
@@ -162,12 +176,12 @@ export default class Nav {
       this.widgetText.html(dStr);
     }
 
-    this.update();
+    this.updateNeeded = true;
   }
 
 
 	build() {
-    this.ui = $('<div class="Sailor text-center"></div>');
+    super.build('Nav');
 
     this.modeSelect = $('<select class="navModeSelect"></select>');
     // add mode options
@@ -187,6 +201,8 @@ export default class Nav {
 			qm.param = 14;
 			qm.setUint8([ newMode ]);
 			this.state.send(qm);
+
+      this.queryParam(14);
     });
 
     this.ui.append(this.modeSelect);
@@ -224,7 +240,6 @@ export default class Nav {
     });
 
     this.ui.append(this.canvas);
-    this.channel.interfaceTab.append(this.ui);
 
     // widget
 		this.widget = $('<div class="widget"><i class="fas fa-drafting-compass"></i></div>');
@@ -233,8 +248,6 @@ export default class Nav {
 		this.widgetText = $('<span>?m</span>');
 		this.widget.append(this.widgetText);
 
-    this.built = true;
-
-    this.update();
+    super.finishBuild();
   }
 }

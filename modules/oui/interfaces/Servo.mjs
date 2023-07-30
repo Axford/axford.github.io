@@ -1,13 +1,13 @@
+import ModuleInterface from './ModuleInterface.mjs';
 import loadStylesheet from '../../loadStylesheet.js';
 import * as DLM from '../../droneLinkMsg.mjs';
 
 
-export default class Servo {
+export default class Servo extends ModuleInterface {
 	constructor(channel, state) {
-    this.channel = channel;
-    this.state = state;
-    this.built = false;
-    this.map = [0,0,0,0];
+    super(channel, state);
+    
+    this.map = [0,0,1,1];
     this.cp = [ [0,0], [0,0], [0,0], [0,0]];
     this.position = 0;
     this.centre = 0;
@@ -26,8 +26,6 @@ export default class Servo {
     // keep width updated
     var w = this.ui.width();
     var iw = w - 2*g;
-    ctx.canvas.width = w;
-    var cx = w/2;
     var h = this.ui.height();
     var ih = h - 2*g;
 
@@ -41,15 +39,10 @@ export default class Servo {
 
 
 	onParamValue(data) {
+    if (!this.built) return;
+
     if (data.msgType == DLM.DRONE_LINK_MSG_TYPE_FLOAT) {
-      if (data.param == 12) {
-        // calc control points
-        this.gotCP = true;
-        var node = this.channel.node.id;
-        var channel = this.channel.channel;
-        this.map = data.values.slice();
-        this.calcControlPoints();
-      } else if (data.param == 8) {
+      if (data.param == 8) {
         this.position = data.values[0];
       } else if (data.param == 13) {
         this.centre = data.values[0];
@@ -58,7 +51,7 @@ export default class Servo {
       }
     }
 
-    this.update();
+    this.updateNeeded = true;
   }
 
 
@@ -68,8 +61,6 @@ export default class Servo {
 
     var node = this.channel.node.id;
     var channel = this.channel.channel;
-
-    this.calcControlPoints();
 
     // gutter
     var g = 30;
@@ -81,6 +72,11 @@ export default class Servo {
     var cx = w/2;
     var h = this.ui.height();
     var ih = h - 2*g;
+
+    this.map = this.state.getParamValues(node, channel, 12, [0,0,0,0]);
+    this.gotCP = this.map[0] > 0 || this.map[1] > 0 || this.map[2] > 0 || this.map[3] > 0;
+
+    this.calcControlPoints();
 
     ctx.fillStyle = '#343a40';
 		ctx.fillRect(0,0,w,200);
@@ -212,16 +208,14 @@ export default class Servo {
 
 
   update() {
-		if (!this.built) return;
+		if (!super.update()) return;
 
     this.drawCurve();
   }
 
 
 	build() {
-		this.built = true;
-
-		this.ui = $('<div class="Servo text-center"></div>');
+		super.build('Servo');
     this.canvas = $('<canvas height=200 />');
 
     var me = this;
@@ -316,9 +310,7 @@ export default class Servo {
 		});
 
 		this.ui.append(this.canvas);
-    this.channel.interfaceTab.append(this.ui);
-
-    this.built = true;
+    
 
     // query map
     var qm = new DLM.DroneLinkMsg();
@@ -329,6 +321,6 @@ export default class Servo {
     qm.msgType = DLM.DRONE_LINK_MSG_TYPE_QUERY;
     this.state.send(qm);
 
-    this.update();
+    super.finishBuild();
   }
 }

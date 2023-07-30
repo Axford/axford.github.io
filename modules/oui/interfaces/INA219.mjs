@@ -1,30 +1,50 @@
+import ModuleInterface from './ModuleInterface.mjs';
 import loadStylesheet from '../../loadStylesheet.js';
 import * as DLM from '../../droneLinkMsg.mjs';
 
 //loadStylesheet('./css/modules/interfaces/INA219.css');
 
-export default class INA219 {
+// capacity curve... approximate
+// ref: https://blog.ampow.com/lipo-voltage-chart/
+// voltages for capacities from 0 to 100
+//                                0     10    20    30    40   50    60    70    80    90    100
+const batteryCapacityCurve = [3.27, 3.69, 3.73, 3.77, 3.8, 3.84, 3.87, 3.95, 4.02, 4.11, 4.2];
+
+
+
+export default class INA219 extends ModuleInterface {
 	constructor(channel, state) {
-    this.channel = channel;
-    this.state = state;
-    this.built = false;
+    super(channel, state);
 	}
 
-	drawMeter(ctx, v, label, x1,y1,w,h) {
-    ctx.strokeStyle = '#343a40';
-    ctx.strokeRect(x1, y1, x1+w, y1+h);
+	estimateCellCapacity(v) {
+    // find nearest reading in capacity curve
+    var cap = 0;
 
-    ctx.fillStyle = '#ccc';
-    ctx.font = '20px serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(label, x1+w/2, y1+h/2 - 15);
+    // check voltage is above minimum
+    if (v < batteryCapacityCurve[0]) return 0;
 
-    ctx.fillStyle = '#8F8';
-    ctx.font = '35px serif';
-    ctx.fillText(v, x1+w/2, y1+h/2 + 20);
+    // find which region of the battery curve we're in
+    for (var i=0; i < 11; i++) {
+      if (v >= batteryCapacityCurve[i]) {
+        cap = i;
+      }
+    }
+
+    // lerp between battery levels to calc final percentage
+    if (cap < 10) {
+      // calc fractional compenent
+      var f = ( v - batteryCapacityCurve[cap]) / (batteryCapacityCurve[cap+1] - batteryCapacityCurve[cap]);
+      cap = cap*10 + f*10;
+    } else {
+      cap = 100;
+    }
+    
+    return cap;
   }
 
 	onParamValue(data) {
+		if (!this.built) return;
 
 		if (data.param == 15 && data.msgType == DLM.DRONE_LINK_MSG_TYPE_FLOAT) {
       // cellV
@@ -43,11 +63,11 @@ export default class INA219 {
       this.widgetText.html(d.toFixed(1) + 'v');
     }
 
-    this.update();
+    this.updateNeeded = true;
   }
 
   update() {
-		if (!this.built) return;
+		if (!super.update()) return;
 
     var node = this.channel.node.id;
     var channel = this.channel.channel;
@@ -59,6 +79,7 @@ export default class INA219 {
 			cellV: this.state.getParamValues(node, channel, 15, [0])[0],
 			alarm: this.state.getParamValues(node, channel, 16, [0])[0]
     }
+		ina.capacity = this.estimateCellCapacity(ina.cellV);
 
     // redraw canvas
 		var c = this.canvas[0];
@@ -73,27 +94,30 @@ export default class INA219 {
 
 		var mw = w/4;
 
-		if (ina.cellV)
-			this.drawMeter(ctx, ina.cellV.toFixed(1), 'Cell V', 0, 0, mw,100);
+		if (ina.cellV) {
+			this.drawMeter(ina.cellV.toFixed(1), 'Cell V', 0, 0, mw,100);
+
+			// capacity
+			var clr = ina.capacity<20 ? '#f55' : '#8f8';
+      this.drawMeterValue(ina.capacity.toFixed(0) + '%', 0, 80, mw, 20, clr, 16);
+		}
 
 		if (ina.loadV)
-			this.drawMeter(ctx, ina.loadV.toFixed(1), 'V', mw, 0, mw,100);
+			this.drawMeter(ina.loadV.toFixed(1), 'V', mw, 0, mw,100);
 
 		if (ina.current)
-	    this.drawMeter(ctx, ina.current.toFixed(1), 'A', 2*mw, 0, mw,100);
+	    this.drawMeter(ina.current.toFixed(1), 'A', 2*mw, 0, mw,100);
 
 		if (ina.power)
-	    this.drawMeter(ctx, ina.power.toFixed(1), 'W', 3*mw, 0, mw,100);
+	    this.drawMeter(ina.power.toFixed(1), 'W', 3*mw, 0, mw,100);
   }
 
 	build() {
-		this.built = true;
+		super.build('INA219');
 
-		this.ui = $('<div class="INA219 text-center"></div>');
     this.canvas = $('<canvas height=100 />');
 
 		this.ui.append(this.canvas);
-    this.channel.interfaceTab.append(this.ui);
 
 		// widget
 		this.widget = $('<div class="widget"><i class="fas fa-car-battery"></i></div>');
@@ -102,8 +126,7 @@ export default class INA219 {
 		this.widgetText = $('<span>?v</span>');
 		this.widget.append(this.widgetText);
 
-    this.built = true;
 
-    this.update();
+    super.finishBuild();
   }
 }

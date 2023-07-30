@@ -1,20 +1,15 @@
+import ModuleInterface from './ModuleInterface.mjs';
 import loadStylesheet from '../../loadStylesheet.js';
 import * as DLM from '../../droneLinkMsg.mjs';
 
 
-export default class Receiver {
+export default class Receiver extends ModuleInterface {
 	constructor(channel, state) {
-    this.channel = channel;
-    this.state = state;
-    this.built = false;
+    super(channel, state);
 	}
 
-	onParamValue(data) {
-    this.update();
-  }
-
   update() {
-		if (!this.built) return;
+		if (!super.update()) return;
 
     var node = this.channel.node.id;
     var channel = this.channel.channel;
@@ -26,6 +21,8 @@ export default class Receiver {
 			inputVals[i] =  this.state.getParamValues(node, channel, 21+i, [0])[0];
 			outputVals[i] =  this.state.getParamValues(node, channel, 11+i, [0])[0];
 		}
+
+		var rawVals = this.state.getParamValues(node, channel, 20, [0,0,0,0,0,0]);
 
 		var switchVal = this.state.getParamValues(node, channel, 29, [0])[0];
 
@@ -42,6 +39,16 @@ export default class Receiver {
 
 		ctx.fillStyle = '#343a40';
 		ctx.fillRect(0,0,w,h);
+
+		// raw values
+		ctx.fillStyle='#fff';
+		var rawTxt= '';
+		for (var i=0; i<6; i++) {
+			if (i>0) rawTxt += ', ';
+			rawTxt += (rawVals[i]*10).toFixed(0);
+		}
+		ctx.fillText(rawTxt, 5, 12);
+
 
 		// mode display
 		var modeH = 30;
@@ -82,16 +89,11 @@ export default class Receiver {
   }
 
 	build() {
-		this.built = true;
-
-		this.ui = $('<div class="Receiver text-center"></div>');
+		super.build('receiver');
     this.canvas = $('<canvas height=200 />');
 
 		this.ui.append(this.canvas);
-    this.channel.interfaceTab.append(this.ui);
-
-    this.built = true;
-
-    this.update();
+    
+		super.finishBuild();
   }
 }

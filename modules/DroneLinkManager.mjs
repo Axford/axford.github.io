@@ -84,14 +84,14 @@ export default class DroneLinkManager {
 
     this.logOptions = {
       Hello:true,
-      DroneLinkMsg: true,
-      RouteEntry: true,
-      Transmit: true,
-      Subscription: true,
-      Router: true,
-      Traceroute: true,
-      LinkCheck: true,
-      FS: true
+      DroneLinkMsg: false,
+      RouteEntry: false,
+      Transmit: false,
+      Subscription: false,
+      Router: false,
+      Traceroute: false,
+      LinkCheck: false,
+      FS: false
     };
 
     this.logFilePath = '';
@@ -306,7 +306,8 @@ export default class DroneLinkManager {
           // just the one Mrs Wemberley
           return;
         } else {
-          this.clog('send fail'.red);
+          if (this.logOptions.Transmit)
+            this.clog(('send fail via ' + b.netInterface.typeName).red);
           // send failed, see how long we've been trying for
           if (loopTime > b.created + DRONE_LINK_MANAGER_MAX_RETRY_INTERVAL) {
 
@@ -961,7 +962,7 @@ export default class DroneLinkManager {
               var srcNodeInfo = this.getNodeInfo(msg.srcNode, false);
               if (srcNodeInfo) {
                 if (srcNodeInfo.gSequencer.isDuplicate(msg.seq)) {
-                  this.clog(('SEEMS LIKE A DUP ' + msg.seq + ', ' + msg.toString()).red);
+                  //this.clog(('SEEMS LIKE A DUP ' + msg.seq + ', ' + msg.toString()).red);
                   return;
                 }
               }
@@ -1069,6 +1070,9 @@ export default class DroneLinkManager {
 
 
   receiveHello(netInterface, msg, metric) {
+
+    // ignore anything that is about us!
+    if (msg.srcNode == this.node) return;
 
     var loopTime = Date.now();
 

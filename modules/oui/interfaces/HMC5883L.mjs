@@ -1,17 +1,26 @@
+import ModuleInterface from './ModuleInterface.mjs';
 import loadStylesheet from '../../loadStylesheet.js';
 import * as DLM from '../../droneLinkMsg.mjs';
 
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-export default class HMC5883L {
+export default class HMC5883L extends ModuleInterface {
 	constructor(channel, state) {
-    this.channel = channel;
-    this.state = state;
-    this.built = false;
+    super(channel, state);
 
     this.rawVectors = [];  // history of raw vector values
+    this.rawVectors2 = [];  // history of raw non-tilt-compensated vector values
+
+    this.spheres = [];
+    this.sphereIndex = 0;
+
+    this.spheres2 = [];
+    this.sphereIndex2 = 0;
 	}
 
 	onParamValue(data) {
+    if (!this.built) return;
 
 		// heading
 		if (data.param == 11 && data.msgType == DLM.DRONE_LINK_MSG_TYPE_FLOAT) {
@@ -29,11 +38,19 @@ export default class HMC5883L {
       if (this.rawVectors.length > 200) this.rawVectors.shift();
 		}
 
-    this.update();
+    if (data.param == 21 && data.msgType == DLM.DRONE_LINK_MSG_TYPE_FLOAT) {
+
+			this.rawVectors2.push(data.values);
+
+      // if too many vectors, lose one
+      if (this.rawVectors2.length > 200) this.rawVectors2.shift();
+		}
+
+    this.updateNeeded = true;
   }
 
   update() {
-		if (!this.built) return;
+		if (!super.update()) return;
 
     var node = this.channel.node.id;
     var channel = this.channel.channel;
@@ -45,18 +62,26 @@ export default class HMC5883L {
 		// keep width updated
 		var w = this.ui.width();
 		ctx.canvas.width = w;
-    var h = this.ui.height();
+    var h = 200;
+
+    // keep size updated
+    var h1 = Math.max(this.ui.height(), 600) - 200;
+    this.renderer.setSize( w, h1 );
+    this.camera.updateProjectionMatrix();
+    this.camera.aspect = w/h1;
 
     // fetch params
     var heading = this.state.getParamValues(node, channel, 11, [0])[0];
     var h2 = (heading - 90) * Math.PI / 180;
 
-    var rawVector = this.state.getParamValues(node, channel, 10, [0]);
+    var rawVector = this.state.getParamValues(node, channel, 10, [0,0,0,0]);
     var calibX = this.state.getParamValues(node, channel, 13, [0,0,0]);
     var calibY = this.state.getParamValues(node, channel, 14, [0,0,0]);
 		var limits = this.state.getParamValues(node, channel, 18, [0,0,0,0]);
 		var samples = this.state.getParamValues(node, channel, 19, [0,0,0,0]);
 		var trim = this.state.getParamValues(node, channel, 15, [0]);
+
+    var rawVector2 = this.state.getParamValues(node, channel, 21, [0,0,0,0]);
 
     // render vector view
     // -------------------------------------------------------------------------
@@ -88,11 +113,7 @@ export default class HMC5883L {
 
 		// update maxVal
 		var maxVal = 1;
-		maxVal = Math.max(maxVal, Math.abs(calibX[0]));
-		maxVal = Math.max(maxVal, Math.abs(calibX[2]));
-		maxVal = Math.max(maxVal, Math.abs(calibY[0]));
-		maxVal = Math.max(maxVal, Math.abs(calibY[2]));
-
+  
     var scaling = 1;
 		if (w2 < h) {
 			scaling = 0.8 * (w2/2) / maxVal;
@@ -101,10 +122,14 @@ export default class HMC5883L {
 		}
 
     for (var i=0; i<this.rawVectors.length; i++) {
+      /*
       if (i == this.rawVectors.length-1) {
         ctx.fillStyle = '#afa';
         ctx.strokeStyle = "#afa";
       }
+      */
+      ctx.fillStyle = this.rawVectors[i][3] == 1 ? '#55f' : '#555';
+      ctx.strokeStyle = this.rawVectors[i][3] == 1 ? '#aaf' : '#888';
       var x = cx2 + this.rawVectors[i][0] * scaling;
       var y = h/2 - this.rawVectors[i][1] * scaling;
       ctx.beginPath();
@@ -114,48 +139,8 @@ export default class HMC5883L {
     }
 
 		//
-		var bcx = cx2 + calibX[1] * scaling;
-		var bcy = h/2 - calibY[1] * scaling;
-
-    // draw limits
-    var bx1 = cx2 + limits[3] * scaling;
-    var bx2 = cx2 + limits[1] * scaling;
-    var by1 = h/2 - limits[0] * scaling;
-    var by2 = h/2 - limits[2] * scaling;
-    // x
-    ctx.strokeStyle = "#f00";
-    ctx.lineWidth = "2";
-    ctx.beginPath();
-    //ctx.rect(bx1,by1,bx2-bx1,by2-by1);
-		ctx.ellipse((bx1+bx2)/2, (by1+by2)/2, (bx2-bx1)/2, (by2-by1)/2, 0, 0, 2 * Math.PI);
-    ctx.stroke();
-
-		// draw bounds
-     bx1 = cx2 + calibX[0] * scaling;
-     bx2 = cx2 + calibX[2] * scaling;
-     by1 = h/2 - calibY[0] * scaling;
-     by2 = h/2 - calibY[2] * scaling;
-    // x
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = "1";
-    ctx.beginPath();
-    ctx.rect(bx1,by1,bx2-bx1,by2-by1);
-    ctx.stroke();
-
-    // draw centre of bounds
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1;
-    // x
-    ctx.beginPath();
-    ctx.moveTo(bx1, bcy);
-    ctx.lineTo(bx2, bcy);
-    ctx.stroke();
-    // y
-    ctx.beginPath();
-    ctx.moveTo(bcx, by1);
-    ctx.lineTo(bcx, by2);
-    ctx.stroke();
-
+		var bcx = cx2; 
+		var bcy = h/2;
 
     // draw latest vector
     if (this.rawVectors.length > 0) {
@@ -220,19 +205,95 @@ export default class HMC5883L {
     ctx.font = '20px bold serif';
 		ctx.textAlign = 'center';
     ctx.fillText(heading.toFixed(0) + '°', cx, 106);
+
+
+    // 3D
+
+    // add vector to 3D visualisation
+    var sphere;
+    if (this.spheres.length < 300) {
+      sphere = new THREE.Mesh( this.sphereGeometry, this.sphereMaterial );
+      this.scene.add( sphere );
+      this.spheres.push(sphere);
+    } else {
+      sphere = this.spheres[this.sphereIndex];
+      this.sphereIndex++;
+      if (this.sphereIndex >= this.spheres.length) this.sphereIndex = 0;
+    }
+    
+    sphere.position.x = rawVector[0];
+    sphere.position.y = rawVector[1];
+    sphere.position.z = rawVector[2];
+
+    // add super raw vector to 3D visualisation
+    var sphere2;
+    if (this.spheres2.length < 300) {
+      sphere2 = new THREE.Mesh( this.sphereGeometry, this.sphereMaterial2 );
+      this.scene.add( sphere2 );
+      this.spheres2.push(sphere2);
+    } else {
+      sphere2 = this.spheres2[this.sphereIndex2];
+      this.sphereIndex2++;
+      if (this.sphereIndex2 >= this.spheres2.length) this.sphereIndex2 = 0;
+    }
+    
+    sphere2.position.x = rawVector2[0];
+    sphere2.position.y = rawVector2[1];
+    sphere2.position.z = rawVector2[2];
   }
 
-	build() {
-		this.built = true;
 
-		this.ui = $('<div class="HMC5883L text-center"></div>');
+  animate() {
+    if (this.visible) {
+      this.renderer.render( this.scene, this.camera );
+    }
+
+    requestAnimationFrame( ()=>{ this.animate(); } );
+  };
+
+
+	build() {
+		super.build('HMC5883L');
+    var w = Math.max(this.ui.width(), 200);
+    var h = Math.max(this.ui.height(), 600);
+
     this.canvas = $('<canvas height=200 />');
 
 		this.ui.append(this.canvas);
-    this.channel.interfaceTab.append(this.ui);
 
-    this.built = true;
+    // THREE
+    var h1 = h - 200;
 
-    this.update();
+    console.log('THREE', w, h1);
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera( 75, w / h1, 0.1, 1000 );
+    this.camera.up = new THREE.Vector3(0, 0, 1);
+
+    this.renderer = new THREE.WebGLRenderer();
+    this.renderer.setSize( w, h1 );
+    this.ui.append( this.renderer.domElement );
+
+    const controls = new OrbitControls( this.camera, this.renderer.domElement );
+    controls.minDistance = 5;
+    controls.maxDistance = 100;
+    controls.maxPolarAngle = Math.PI / 2;
+
+    const geometry = new THREE.BoxGeometry( 1, 1, 1 );
+    const material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
+    this.cube = new THREE.Mesh( geometry, material );
+    this.scene.add( this.cube );
+
+    this.scene.add( new THREE.AxesHelper( 10 ) );
+
+    this.camera.position.z = 12;
+
+    this.sphereGeometry = new THREE.SphereGeometry( 0.2, 6, 6 );
+    this.sphereMaterial = new THREE.MeshBasicMaterial( { color: 0xffff00 } );
+
+    this.sphereMaterial2 = new THREE.MeshBasicMaterial( { color: 0xff00ff } );
+    
+
+    super.finishBuild();
+    this.animate();
   }
 }

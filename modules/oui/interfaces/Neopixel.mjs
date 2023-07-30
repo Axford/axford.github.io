@@ -1,20 +1,15 @@
+import ModuleInterface from './ModuleInterface.mjs';
 import loadStylesheet from '../../loadStylesheet.js';
 import * as DLM from '../../droneLinkMsg.mjs';
 
 
-export default class Neopixel {
+export default class Neopixel extends ModuleInterface {
 	constructor(channel, state) {
-    this.channel = channel;
-    this.state = state;
-    this.built = false;
+    super(channel, state);
 	}
 
-	onParamValue(data) {
-    this.update();
-  }
-
   update() {
-		if (!this.built) return;
+		if (!super.update()) return;
 
     var node = this.channel.node.id;
     var channel = this.channel.channel;
@@ -58,16 +53,11 @@ export default class Neopixel {
   }
 
 	build() {
-		this.built = true;
-
-		this.ui = $('<div class="Neopixel text-center"></div>');
+		super.build('Neopixel');
     this.canvas = $('<canvas height=50 />');
 
 		this.ui.append(this.canvas);
-    this.channel.interfaceTab.append(this.ui);
-
-    this.built = true;
-
-    this.update();
+    
+    super.finishBuild();
   }
 }
